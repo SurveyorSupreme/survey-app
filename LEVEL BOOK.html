@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>Surveyor Level Book</title>
+    <style>
+        :root { --primary: #0056b3; --success: #28a745; --danger: #dc3545; --dark: #343a40; }
+        body { font-family: -apple-system, sans-serif; margin: 0; padding: 10px; background: #f4f7f6; color: #333; }
+        .card { background: #fff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 12px; }
+        label { display: block; font-size: 0.75rem; font-weight: bold; margin-bottom: 4px; color: #666; }
+        input { width: 100%; padding: 12px; margin-bottom: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 1.1rem; box-sizing: border-box; }
+        #ih_display { text-align: center; padding: 15px; background: #e7f1ff; border: 2px dashed var(--primary); border-radius: 8px; color: var(--primary); font-size: 1.4rem; font-weight: bold; margin-bottom: 15px; }
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        button { width: 100%; padding: 16px; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; cursor: pointer; color: white; }
+        .bg-blue { background: var(--primary); }
+        .bg-green { background: var(--success); }
+        .bg-red { background: var(--danger); }
+        .table-container { overflow-x: auto; margin-top: 10px; border-radius: 8px; border: 1px solid #ddd; }
+        table { width: 100%; border-collapse: collapse; background: white; min-width: 550px; }
+        th, td { padding: 10px; border: 1px solid #eee; text-align: center; font-size: 0.85rem; }
+        th { background: var(--dark); color: white; }
+        .rise { color: var(--success); font-weight: bold; }
+        .fall { color: var(--danger); font-weight: bold; }
+        .rl-cell { font-weight: bold; background: #fffde7; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <label>Start RL (Benchmark)</label>
+        <input type="number" id="start_rl" step="0.001" placeholder="e.g. 23.756" inputmode="decimal">
+        <label>Backsight (BS)</label>
+        <input type="number" id="bs_val" step="0.001" placeholder="e.g. 0.965" inputmode="decimal">
+        <button class="bg-blue" id="setupBtn">SET IH / SETUP</button>
+    </div>
+
+    <div id="ih_display">IH: NOT SET</div>
+
+    <div class="card">
+        <label>Reading (IS or FS)</label>
+        <input type="number" id="reading" step="0.001" placeholder="0.000" inputmode="decimal">
+        <label>Description</label>
+        <input type="text" id="desc" placeholder="e.g. MH1, Kerb">
+        <div class="btn-group">
+            <button class="bg-green" id="isBtn">ADD IS</button>
+            <button class="bg-red" id="fsBtn">ADD FS (CP)</button>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table id="levelTable">
+            <thead>
+                <tr>
+                    <th>BS</th>
+                    <th>IS</th>
+                    <th>FS</th>
+                    <th>Diff (+/-)</th>
+                    <th>RL</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <button id="csvBtn" style="width:100%; margin-top:15px; padding:15px; background:#333; color:white; border:none; border-radius:6px; font-weight:bold;">DOWNLOAD CSV</button>
+
+    <script>
+        let setupBS = null;
+        let setupIH = null;
+        let surveyData = [];
+
+        document.getElementById('setupBtn').addEventListener('click', function() {
+            const rl = parseFloat(document.getElementById('start_rl').value);
+            const bs = parseFloat(document.getElementById('bs_val').value);
+            if (isNaN(rl) || isNaN(bs)) return alert("Enter RL and BS");
+
+            setupBS = bs;
+            setupIH = rl + bs;
+            document.getElementById('ih_display').innerText = "IH: " + setupIH.toFixed(3);
+            
+            saveRow(bs, null, null, 0, rl, "Start/BS Setup");
+            document.getElementById('bs_val').value = "";
+        });
+
+        document.getElementById('isBtn').addEventListener('click', function() { addShot('IS'); });
+        document.getElementById('fsBtn').addEventListener('click', function() { addShot('FS'); });
+
+        function addShot(type) {
+            if (setupIH === null) return alert("Set Setup/BS first!");
+            const currentReading = parseFloat(document.getElementById('reading').value);
+            const description = document.getElementById('desc').value;
+            if (isNaN(currentReading)) return alert("Enter reading");
+
+            const diff = setupBS - currentReading;
+            const rl = setupIH - currentReading;
+
+            if (type === 'IS') {
+                saveRow(null, currentReading, null, diff, rl, description);
+            } else {
+                saveRow(null, null, currentReading, diff, rl, description + " (CP)");
+                document.getElementById('start_rl').value = rl.toFixed(3);
+                setupIH = null;
+                setupBS = null;
+                document.getElementById('ih_display').innerText = "IH: SET NEW BS";
+            }
+
+            document.getElementById('reading').value = "";
+            document.getElementById('desc').value = "";
+        }
+
+        function saveRow(bs, is, fs, diff, rl, desc) {
+            const tableBody = document.querySelector('#levelTable tbody');
+            const row = tableBody.insertRow(-1);
+            
+            let diffClass = diff > 0 ? "rise" : (diff < 0 ? "fall" : "");
+            let diffText = diff > 0 ? "+" + diff.toFixed(3) : (diff < 0 ? diff.toFixed(3) : "0.000");
+            if (bs && !is && !fs) diffText = "---";
+
+            row.innerHTML = `
+                <td>${bs ? bs.toFixed(3) : ''}</td>
+                <td>${is ? is.toFixed(3) : ''}</td>
+                <td>${fs ? fs.toFixed(3) : ''}</td>
+                <td class="${diffClass}">${diffText}</td>
+                <td class="rl-cell">${rl.toFixed(3)}</td>
+                <td>${desc}</td>
+            `;
+            surveyData.push({bs, is, fs, diff, rl, desc});
+        }
+
+        document.getElementById('csvBtn').addEventListener('click', function() {
+            if (surveyData.length === 0) return alert("No data to download!");
+
+            // Prompt for filename
+            const defaultName = "LevelRun_" + new Date().toISOString().slice(0,10);
+            let fileName = prompt("Enter file name:", defaultName);
+            
+            // If user cancels, don't download
+            if (fileName === null) return;
+            if (fileName === "") fileName = defaultName;
+
+            let csv = "BS,IS,FS,Diff,RL,Description\n";
+            surveyData.forEach(r => {
+                csv += `${r.bs||''},${r.is||''},${r.fs||''},${r.diff||''},${r.rl.toFixed(3)},${r.desc}\n`;
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName + ".csv";
+            a.click();
+        });
+    </script>
+</body>
+</html>
