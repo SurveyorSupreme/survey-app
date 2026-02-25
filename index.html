@@ -3,19 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>Surveyor Level Book</title>
+    <title>Surveyor Level Book - Pro</title>
     <style>
-        :root { --primary: #0056b3; --success: #28a745; --danger: #dc3545; --dark: #343a40; }
+        :root { --primary: #0056b3; --success: #28a745; --danger: #dc3545; --dark: #343a40; --warning: #ffc107; }
         body { font-family: -apple-system, sans-serif; margin: 0; padding: 10px; background: #f4f7f6; color: #333; }
         .card { background: #fff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 12px; }
         label { display: block; font-size: 0.75rem; font-weight: bold; margin-bottom: 4px; color: #666; }
         input { width: 100%; padding: 12px; margin-bottom: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 1.1rem; box-sizing: border-box; }
         #ih_display { text-align: center; padding: 15px; background: #e7f1ff; border: 2px dashed var(--primary); border-radius: 8px; color: var(--primary); font-size: 1.4rem; font-weight: bold; margin-bottom: 15px; }
         .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        button { width: 100%; padding: 16px; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; cursor: pointer; color: white; }
+        button { width: 100%; padding: 16px; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; cursor: pointer; color: white; transition: opacity 0.2s; }
+        button:active { opacity: 0.7; }
         .bg-blue { background: var(--primary); }
         .bg-green { background: var(--success); }
         .bg-red { background: var(--danger); }
+        .bg-dark { background: var(--dark); }
+        .bg-orange { background: #fd7e14; }
         .table-container { overflow-x: auto; margin-top: 10px; border-radius: 8px; border: 1px solid #ddd; }
         table { width: 100%; border-collapse: collapse; background: white; min-width: 550px; }
         th, td { padding: 10px; border: 1px solid #eee; text-align: center; font-size: 0.85rem; }
@@ -23,6 +26,7 @@
         .rise { color: var(--success); font-weight: bold; }
         .fall { color: var(--danger); font-weight: bold; }
         .rl-cell { font-weight: bold; background: #fffde7; }
+        .action-bar { margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     </style>
 </head>
 <body>
@@ -64,12 +68,26 @@
         </table>
     </div>
 
-    <button id="csvBtn" style="width:100%; margin-top:15px; padding:15px; background:#333; color:white; border:none; border-radius:6px; font-weight:bold;">DOWNLOAD CSV</button>
+    <div class="action-bar">
+        <button id="csvBtn" class="bg-dark">DOWNLOAD CSV</button>
+        <button id="clearBtn" class="bg-orange">CLEAR ALL</button>
+    </div>
 
     <script>
         let setupBS = null;
         let setupIH = null;
-        let surveyData = [];
+        // Load existing data from LocalStorage
+        let surveyData = JSON.parse(localStorage.getItem('surveyData')) || [];
+
+        // Re-render table on load if data exists
+        window.onload = function() {
+            if (surveyData.length > 0) {
+                renderTable();
+                // Attempt to pre-fill Start RL from last known RL
+                const lastEntry = surveyData[surveyData.length - 1];
+                document.getElementById('start_rl').value = lastEntry.rl.toFixed(3);
+            }
+        };
 
         document.getElementById('setupBtn').addEventListener('click', function() {
             const rl = parseFloat(document.getElementById('start_rl').value);
@@ -90,9 +108,10 @@
         function addShot(type) {
             if (setupIH === null) return alert("Set Setup/BS first!");
             const currentReading = parseFloat(document.getElementById('reading').value);
-            const description = document.getElementById('desc').value;
+            const description = document.getElementById('desc').value || "-";
             if (isNaN(currentReading)) return alert("Enter reading");
 
+            // Logic: BS - Current Reading = Diff relative to setup
             const diff = setupBS - currentReading;
             const rl = setupIH - currentReading;
 
@@ -111,32 +130,38 @@
         }
 
         function saveRow(bs, is, fs, diff, rl, desc) {
-            const tableBody = document.querySelector('#levelTable tbody');
-            const row = tableBody.insertRow(-1);
-            
-            let diffClass = diff > 0 ? "rise" : (diff < 0 ? "fall" : "");
-            let diffText = diff > 0 ? "+" + diff.toFixed(3) : (diff < 0 ? diff.toFixed(3) : "0.000");
-            if (bs && !is && !fs) diffText = "---";
-
-            row.innerHTML = `
-                <td>${bs ? bs.toFixed(3) : ''}</td>
-                <td>${is ? is.toFixed(3) : ''}</td>
-                <td>${fs ? fs.toFixed(3) : ''}</td>
-                <td class="${diffClass}">${diffText}</td>
-                <td class="rl-cell">${rl.toFixed(3)}</td>
-                <td>${desc}</td>
-            `;
             surveyData.push({bs, is, fs, diff, rl, desc});
+            // Auto-save to LocalStorage
+            localStorage.setItem('surveyData', JSON.stringify(surveyData));
+            renderTable();
+        }
+
+        function renderTable() {
+            const tableBody = document.querySelector('#levelTable tbody');
+            tableBody.innerHTML = "";
+            surveyData.forEach((r, index) => {
+                const row = tableBody.insertRow(-1);
+                let diffClass = r.diff > 0 ? "rise" : (r.diff < 0 ? "fall" : "");
+                let diffText = r.diff > 0 ? "+" + r.diff.toFixed(3) : (r.diff < 0 ? r.diff.toFixed(3) : "0.000");
+                if (r.bs && !r.is && !r.fs) diffText = "---";
+
+                row.innerHTML = `
+                    <td>${r.bs ? r.bs.toFixed(3) : ''}</td>
+                    <td>${r.is ? r.is.toFixed(3) : ''}</td>
+                    <td>${r.fs ? r.fs.toFixed(3) : ''}</td>
+                    <td class="${diffClass}">${diffText}</td>
+                    <td class="rl-cell">${r.rl.toFixed(3)}</td>
+                    <td>${r.desc}</td>
+                `;
+            });
         }
 
         document.getElementById('csvBtn').addEventListener('click', function() {
             if (surveyData.length === 0) return alert("No data to download!");
 
-            // Prompt for filename
             const defaultName = "LevelRun_" + new Date().toISOString().slice(0,10);
             let fileName = prompt("Enter file name:", defaultName);
             
-            // If user cancels, don't download
             if (fileName === null) return;
             if (fileName === "") fileName = defaultName;
 
@@ -151,6 +176,14 @@
             a.href = url;
             a.download = fileName + ".csv";
             a.click();
+        });
+
+        document.getElementById('clearBtn').addEventListener('click', function() {
+            if (confirm("Are you sure? This will wipe all saved data from this device.")) {
+                surveyData = [];
+                localStorage.removeItem('surveyData');
+                location.reload();
+            }
         });
     </script>
 </body>
